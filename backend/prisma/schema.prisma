@@ -1,0 +1,372 @@
+// SecurePay data model.
+//
+// Conventions enforced throughout:
+// - Primary keys are UUIDs (non-enumerable, no sequential-ID guessing).
+// - Every relation has a real foreign-key constraint — no orphaned rows.
+// - Money fields use Decimal, never Float.
+// - Nothing sensitive is stored in plaintext (passwords, OTP codes, and
+//   session tokens are all stored as hashes).
+// - AuditLog and SecurityEvent rows are append-only at the application
+//   layer: the API never exposes an update or delete path for them.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+enum RoleName {
+  USER
+  MERCHANT
+  ADMIN
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        RoleName @unique
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  users User[]
+
+  @@map("roles")
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  FROZEN
+  SUSPENDED
+  CLOSED
+}
+
+model User {
+  id              String        @id @default(uuid()) @db.Uuid
+  roleId          String        @db.Uuid
+  email           String        @unique
+  passwordHash    String
+  fullName        String
+  phone           String?       @unique
+  accountStatus   AccountStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt DateTime?
+  mfaEnabled      Boolean       @default(false)
+  mfaSecretHash   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  role     Role      @relation(fields: [roleId], references: [id])
+  wallet   Wallet?
+  merchant Merchant?
+
+  sessions         Session[]
+  otps             Otp[]
+  devices          Device[]
+  notifications    Notification[]
+  loginAttempts    LoginAttempt[]
+  securityEvents   SecurityEvent[]
+  auditLogsAsActor AuditLog[]      @relation("AuditLogActor")
+  paymentsMade     Payment[]       @relation("PaymentPayer")
+  refundsRequested Refund[]        @relation("RefundRequestedBy")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Wallet & transactions
+// ---------------------------------------------------------------------------
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+}
+
+model Wallet {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @unique @db.Uuid
+  balance   Decimal      @default(10000.00) @db.Decimal(14, 2)
+  currency  String       @default("INR")
+  status    WalletStatus @default(ACTIVE)
+  // Optimistic-concurrency guard, used alongside row-level locking inside
+  // a DB transaction, to make concurrent debits/credits race-safe.
+  version   Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user                 User          @relation(fields: [userId], references: [id])
+  outgoingTransactions Transaction[] @relation("TransactionFromWallet")
+  incomingTransactions Transaction[] @relation("TransactionToWallet")
+
+  @@map("wallets")
+}
+
+enum TransactionType {
+  TRANSFER
+  MERCHANT_PAYMENT
+  REFUND
+  TOPUP
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model Transaction {
+  id             String            @id @default(uuid()) @db.Uuid
+  fromWalletId   String?           @db.Uuid
+  toWalletId     String?           @db.Uuid
+  amount         Decimal           @db.Decimal(14, 2)
+  currency       String            @default("INR")
+  type           TransactionType
+  status         TransactionStatus @default(PENDING)
+  // Client-supplied key to make retried requests safe to resubmit —
+  // the same key can never create two transactions.
+  idempotencyKey String?           @unique
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  fromWallet Wallet?  @relation("TransactionFromWallet", fields: [fromWalletId], references: [id])
+  toWallet   Wallet?  @relation("TransactionToWallet", fields: [toWalletId], references: [id])
+  payment    Payment?
+
+  @@index([fromWalletId])
+  @@index([toWalletId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Merchants, payments & refunds
+// ---------------------------------------------------------------------------
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Merchant {
+  id           String         @id @default(uuid()) @db.Uuid
+  ownerUserId  String         @unique @db.Uuid
+  businessName String         @unique
+  category     String?
+  status       MerchantStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  owner    User      @relation(fields: [ownerUserId], references: [id])
+  payments Payment[]
+
+  @@map("merchants")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id            String        @id @default(uuid()) @db.Uuid
+  merchantId    String        @db.Uuid
+  // Null until someone actually pays: a payment request is created by the
+  // merchant with no payer or transaction attached yet (like a QR/payment
+  // link anyone can fulfill), and both are set atomically at pay time.
+  payerUserId   String?       @db.Uuid
+  transactionId String?       @unique @db.Uuid
+  amount        Decimal       @db.Decimal(14, 2)
+  status        PaymentStatus @default(PENDING)
+  expiresAt     DateTime
+  // Required for a customer payment attempt. A replay with this same value
+  // resolves to the settled Payment instead of creating another debit.
+  paymentIdempotencyKey String? @unique
+  reference     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  merchant    Merchant     @relation(fields: [merchantId], references: [id])
+  payer       User?        @relation("PaymentPayer", fields: [payerUserId], references: [id])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  refund      Refund?
+
+  @@index([merchantId])
+  @@index([payerUserId])
+  @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model Refund {
+  id                String       @id @default(uuid()) @db.Uuid
+  paymentId         String       @unique @db.Uuid
+  requestedByUserId String       @db.Uuid
+  amount            Decimal      @db.Decimal(14, 2)
+  status            RefundStatus @default(PENDING)
+  reason            String
+  processedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  payment     Payment @relation(fields: [paymentId], references: [id])
+  requestedBy User    @relation("RefundRequestedBy", fields: [requestedByUserId], references: [id])
+
+  @@index([status])
+  @@map("refunds")
+}
+
+// ---------------------------------------------------------------------------
+// Sessions, MFA & devices
+// ---------------------------------------------------------------------------
+
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  // The HttpOnly cookie carries an opaque token; only its hash is stored,
+  // so a database read can never yield a usable session token.
+  tokenHash  String   @unique
+  deviceInfo String?
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+enum OtpPurpose {
+  LOGIN_MFA
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+  TRANSACTION_CONFIRM
+}
+
+model Otp {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String     @db.Uuid
+  purpose   OtpPurpose
+  codeHash  String
+  attempts  Int        @default(0)
+  expiresAt DateTime
+  used      Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, purpose])
+  @@map("otps")
+}
+
+model Device {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  fingerprint String
+  name        String?
+  trusted     Boolean  @default(false)
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, fingerprint])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Audit, security monitoring & notifications
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  actorRole  String?
+  action     String
+  targetType String
+  targetId   String?  @db.Uuid
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("AuditLogActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum SecurityEventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SecurityEvent {
+  id        String                @id @default(uuid()) @db.Uuid
+  userId    String?               @db.Uuid
+  eventType String
+  severity  SecurityEventSeverity @default(LOW)
+  details   Json?
+  ipAddress String?
+  resolved  Boolean               @default(false)
+  createdAt DateTime              @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("security_events")
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  email     String
+  ipAddress String
+  userAgent String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("login_attempts")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+  @@map("notifications")
+}
