@@ -13,3 +13,6 @@ Thumbs.db
 !.env.example
 
 node_modules/
+
+backend/dist/
+frontend/dist/
