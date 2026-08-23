@@ -59,7 +59,7 @@ export function setAuthCookies(res: Response, session: CreatedSession): void {
   res.cookie(SESSION_COOKIE, session.token, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: "lax",
+    sameSite: "none",
     signed: true,
     expires: session.expiresAt,
     path: "/",
@@ -67,7 +67,7 @@ export function setAuthCookies(res: Response, session: CreatedSession): void {
   res.cookie(CSRF_COOKIE, session.csrfToken, {
     httpOnly: false,
     secure: isProduction,
-    sameSite: "lax",
+    sameSite: "none",
     expires: session.expiresAt,
     path: "/",
   });
