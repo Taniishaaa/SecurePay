@@ -85,10 +85,6 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL printed by the command (normally `http://localhost:5173`).
-Use a seeded account such as `alice@example.test` with the published demo
-password `SecurePay@Demo1`.
-
 ### Verification commands
 
 ```bash
@@ -827,7 +823,7 @@ admin-frozen account losing its live session immediately, admin
 self-modification being blocked, and a double-pay attempt on a completed
 payment request correctly rejected (409).
 
-### Phase 6 — Wallet System ✅ complete
+### Phase 6 — Wallet System 
 
 Deliverable: functional virtual wallet UI and simulated balance top-up flow.
 
@@ -842,7 +838,7 @@ Deliverable: functional virtual wallet UI and simulated balance top-up flow.
 - [x] Send Money UI now calls the existing secure transfer endpoint and
       refreshes the displayed server-calculated balance
 
-### Phase 7 — P2P Transfers ✅ complete
+### Phase 7 — P2P Transfers 
 
 Deliverable: recipient-selected peer-to-peer transfers with confirmation,
 receipt, and transaction history.
@@ -859,7 +855,7 @@ receipt, and transaction history.
       optimistic concurrency protect transfers from manipulation, replay,
       races, and double spending
 
-### Phase 8 — Merchant Payments ✅ complete
+### Phase 8 — Merchant Payments 
 
 - [x] Merchants can create amount-validated payment requests with a bounded
       expiration window and view their request/status history
@@ -869,7 +865,7 @@ receipt, and transaction history.
       expiration/state validation, atomic wallet/payment updates, audit logs,
       and a required idempotency key for replay-safe retries
 
-### Phase 9 — Refunds & Transaction Management ✅ complete
+### Phase 9 — Refunds & Transaction Management 
 
 - [x] Searchable, status-filtered transaction history with downloadable text
       receipts for each transaction
@@ -880,14 +876,14 @@ receipt, and transaction history.
 - [x] Duplicate requests, foreign-resource access, invalid state transitions,
       amount manipulation, and concurrent double refunds are rejected
 
-### Phase 10 — Admin & Security Center ✅ complete
+### Phase 10 — Admin & Security Center 
 
 - [x] Admin dashboard presents live totals for users, merchants, transactions,
       failed logins, security events, and audit logs
 - [x] Existing protected admin APIs provide user/merchant status management,
       transaction monitoring, and security/audit-log review
 
-### Phase 11 — Security Hardening ✅ complete
+### Phase 11 — Security Hardening 
 
 - [x] Strict server-side Zod schemas, size limits, decimal/length validation,
       Prisma parameterization, authenticated authorization, CORS allow-listing,
@@ -898,7 +894,7 @@ receipt, and transaction history.
 - [x] Unexpected errors are always reduced to a generic client response; no
       development stack, driver message, secret, or internal path is exposed
 
-### Phase 12 — Business Logic Security ✅ complete
+### Phase 12 — Business Logic Security 
 
 - [x] Financial mutations use server-side decimal validation, caps, balances,
       ownership checks, database transactions, and optimistic wallet versions
@@ -908,7 +904,7 @@ receipt, and transaction history.
       missing replay keys, and malformed refund/payment inputs; concurrency is
       guarded in the transfer/refund transaction implementations
 
-### Phase 13 — Audit Logging & Exception Management ✅ complete
+### Phase 13 — Audit Logging & Exception Management 
 
 - [x] Security-relevant auth, wallet, transfer, payment, refund, and admin
       actions are recorded through the append-only audit/security-event models
