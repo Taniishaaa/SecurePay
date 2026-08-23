@@ -690,7 +690,7 @@ accounts is seeded directly instead.
       (reserved by RFC 2606, can never resolve to a real domain), no phone
       numbers or bank/financial details are set, and every account shares one
       **published, intentionally-public demo password**
-      (`SecurePay@Demo1`) — there is nothing here that needs to stay secret
+     — there is nothing here that needs to stay secret
 - [x] Verified locally: seeded against a real Postgres instance, re-ran to
       confirm idempotency (upserts converge, no duplicate-row errors), and
       confirmed the stored Argon2id hash verifies against the documented

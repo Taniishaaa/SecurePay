@@ -78,9 +78,7 @@ export function LoginPage() {
             </li>
           ))}
         </ul>
-        <p>
-          Password for every account: <code>SecurePay@Demo1</code>
-        </p>
+        
       </div>
     </section>
   );

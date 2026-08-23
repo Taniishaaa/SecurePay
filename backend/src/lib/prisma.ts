@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
-import { env, isProduction } from "../config/env";
+import { env } from "../config/env";
 
 /**
  * Single shared PrismaClient instance. In dev, ts-node/tsx module reloads
@@ -18,9 +18,9 @@ export const prisma =
   global.__prisma ??
   new PrismaClient({
     adapter,
-    log: isProduction ? ["error", "warn"] : ["query", "error", "warn"],
+    log: ["error", "warn"],
   });
 
-if (!isProduction) {
+if (process.env.NODE_ENV !== "production") {
   global.__prisma = prisma;
 }
