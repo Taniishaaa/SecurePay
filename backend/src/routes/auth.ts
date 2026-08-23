@@ -86,7 +86,10 @@ authRouter.post(
       ipAddress,
     });
 
-    res.json({ user: publicUser(user) });
+    res.json({
+  user: publicUser(user),
+  csrfToken: session.csrfToken,
+});
   })
 );
 

@@ -15,7 +15,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** Reads the `csrfToken` cookie the backend sets on login — see backend/src/lib/session.ts. */
 function readCsrfToken(): string | undefined {
   const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]+)/);
-  return match?.[1];
+  return match?.[1] ?? sessionStorage.getItem("csrfToken") ?? undefined;
 }
 
 /**
@@ -48,5 +48,15 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const data = await response.json();
+
+if (path === "/auth/login" && data.csrfToken) {
+  sessionStorage.setItem("csrfToken", data.csrfToken);
+}
+
+if (path === "/auth/logout") {
+  sessionStorage.removeItem("csrfToken");
+}
+
+return data as T;
 }
